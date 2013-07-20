@@ -21,11 +21,14 @@
  *                            - https://developer.mozilla.org/en-US/docs/JSON#JSON_in_Firefox_2
  *                            */
 
-var fs=require('fs');
-var program=require('commander');
-var cheerio=require('cheerio');
+var fs = require('fs');
+var program = require('commander');
+var cheerio = require('cheerio');
+var rest = require('restler');
+
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var URL_DEFAULT = "http://www.google.com";
 
 var assertFileExists = function(infile){
 	var instr = infile.toString();
@@ -36,16 +39,36 @@ var assertFileExists = function(infile){
 	return instr;
 };
 
-var cheerioHtmlFile = function(htmlfile){
-	return cheerio.load(fs.readFileSync(htmlfile));
+var assertUrlValid = function (url) {
+	console.log("check url - %s",url);
+}
+
+var cheerioHtmlFile = function(htmlfile, checkUrl) {
+	var htmlResult = "";
+	if(checkUrl == "")
+		htmlResult = cheerio.load(fs.readFileSync(htmlfile));
+	else{
+		console.log('Fetch html:'+checkUrl+' first');
+		rest.get(checkUrl).on('complete',function(result){
+			console.log('haha');
+			if(result instanceof Error){
+				console.log("%s cannot be fetched now, please try agian later.",checkUrl);
+				process.exit(1);
+			}else{
+				console.log(result);
+				htmlResult = result;
+			}
+		});
+	}
+	return htmlResult;
 };
 
-var loadChecks = function(checksfile){
+var loadChecks = function(checksfile) {
 	return JSON.parse(fs.readFileSync(checksfile));
 };
 
-var checkHtmlFile = function(htmlfile, checksfile){
-	$ = cheerioHtmlFile(htmlfile);
+var checkHtmlFile = function (htmlfile, checksfile,checkUrl) {
+	$ = cheerioHtmlFile(htmlfile, checkUrl);
 	var checks = loadChecks(checksfile).sort();
 	var out = {};
 	for(var ii in checks){
@@ -61,12 +84,29 @@ var clone = function(fn){
     return fn.bind({});
 };
 
+var getUrlToBeChecked = function(program){
+	var urlIndex = program.rawArgs.indexOf('--url');
+	var urlValue = ""; //default empty
+	if(urlIndex == -1) urlIndex = program.rawArgs.indexOf('-u');
+	if(urlIndex > -1){
+		urlValue = program.rawArgs[urlIndex+1];
+	}
+	return urlValue;
+};
+
 if(require.main == module){
 	program
 		.option('-c, --checks <check_file>','Path to checks.json',clone(assertFileExists),CHECKSFILE_DEFAULT)
 		.option('-f, --file <html_file>','Path to index.html',clone(assertFileExists),HTMLFILE_DEFAULT)
+		.option('-u, --url <url>','Path to a url',clone(assertUrlValid))
 		.parse(process.argv);
-	var checkJson = checkHtmlFile(program.file,program.checks);
+	console.log(program);
+	console.log('url>'+program.url);
+	console.log('file>'+program.file);
+	console.log('checks>'+program.checks);
+	// get the file either from file input or fetch from remote url
+	var checkUrl = getUrlToBeChecked(program);
+	var checkJson = checkHtmlFile(program.file,program.checks,checkUrl);
 	var outJson = JSON.stringify(checkJson,null,4);
 	console.log(outJson);
 }else{
